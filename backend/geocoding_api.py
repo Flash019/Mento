@@ -1,11 +1,13 @@
 
-
-
+import os 
+from dotenv import load_dotenv
 import requests
+load_dotenv()
 
+MAP_API_KEY = os.getenv("GEOCODING_API_KEY")
 
 def get_lat_long_from_address(address: str):
-    url = "https://nominatim.openstreetmap.org/search"
+    url = MAP_API_KEY
     params = {
         "q": address,
         "format": "json",

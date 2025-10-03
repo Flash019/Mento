@@ -6,6 +6,7 @@ from jose import jwt, JWTError
 from fastapi import HTTPException, status, Depends
 from passlib.context import CryptContext
 from pydantic_settings import BaseSettings
+
 from model.user import User
 import logging
 
@@ -33,6 +34,9 @@ class Settings(BaseSettings):
     ALGORITHM: str = ALGORITHM
     RESET_TOKEN_EXPIRE_MINUTES: int = 120
 
+    # REFRESH_TOKEN
+    RESET_REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    RESET_ACCESS_TOKEN_EXPIRE_MINS: int = 5
     # Email (optional)
     GMAIL_USER: Optional[str] = None
     GMAIL_PASS: Optional[str] = None
@@ -100,18 +104,18 @@ def verify_token(token: str, expected_type: str = "access") -> dict:
 
 # User authentication
 
-def authenticate_user(username: str, password: str, db: Session = Depends(get_db)) -> Optional[User]:
+def authenticate_user(phone: str, password: str, db: Session = Depends(get_db)) -> Optional[User]:
     """Authenticate a user"""
-    user = db.query(User).filter(User.username == username).first()
+    user = db.query(User).filter(User.phone == phone).first()
     if not user:
         logger.info("User not found")
         return None
 
-    if not verify_password(password, user.hashed_password):
+    if not verify_password(password, user.password_hash):
         logger.info("Invalid password")
         return None
 
-    logger.info(f"Authenticated user: {username}")
+    logger.info(f"Authenticated user: {phone}")
     return user
 
 
@@ -132,6 +136,54 @@ def verify_reset_token(token: str) -> Optional[dict]:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         if payload.get("type") != "reset":
+            return None
+        return payload
+    except JWTError:
+        return None
+
+# Refresh token store ---> 30 Days 
+def refresh_token_encode(data: dict, expires_delta: timedelta = None) -> str:
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(days=settings.RESET_REFRESH_TOKEN_EXPIRE_DAYS)  
+
+    to_encode.update({
+        "exp":expire,
+        "type":"refresh"
+        })
+    encode_refresh_token =  jwt.encode(to_encode,settings.SECRET_KEY,algorithm=ALGORITHM)
+    return encode_refresh_token
+
+def refresh_token_decode(token: str) -> Optional[dict]:
+    try:
+        payload = jwt.decode(token,settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "refresh":
+            return None
+        return payload
+    except JWTError:
+        return None
+    
+
+# Acsess token in cookie ----> 2 Hours or 120 Mins 
+
+def access_token_encode(data: dict, expires_delta: timedelta = None) -> str:
+    to_encode = data.copy()
+    if expires_delta:
+        expire_acc = datetime.utcnow() + expires_delta
+    else:
+        expire_acc = datetime.utcnow() + timedelta(minutes=settings.RESET_ACCESS_TOKEN_EXPIRE_MINS)
+    to_encode.update({"exp":expire_acc,"type":"access"})
+
+    encode_access_token = jwt.encode(to_encode,settings.SECRET_KEY,algorithm=ALGORITHM)
+    return encode_access_token        
+    
+
+def access_token_decode(token:str)  -> Optional[dict]:
+    try:
+        payload = jwt.decode(token,settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "access":
             return None
         return payload
     except JWTError:
