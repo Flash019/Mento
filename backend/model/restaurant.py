@@ -41,7 +41,10 @@ class Restaurant(Base):
     menu_items = relationship("MenuItem", back_populates="restaurant", cascade="all, delete-orphan")
     orders = relationship("Order", back_populates="restaurant", cascade="all, delete-orphan")
     reviews = relationship("Review", back_populates="restaurant")
-
+    bank_account_number = Column(String, nullable=True)
+    ifsc_code = Column(String, nullable=True)
+    account_holder_name = Column(String, nullable=True)
+    bank_name = Column(String, nullable=True)
 
 class RestaurantLocation(Base):
     __tablename__ = "restaurant_locations"
@@ -62,7 +65,10 @@ class RestaurantLocation(Base):
     phone = Column(String(20))
     is_primary = Column(Boolean, default=False)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
-
+    bank_account_number = Column(String, nullable=True)
+    ifsc_code = Column(String, nullable=True)
+    account_holder_name = Column(String, nullable=True)
+    bank_name = Column(String, nullable=True)
     restaurant = relationship("Restaurant", back_populates="locations")
 
 

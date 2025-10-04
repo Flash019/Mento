@@ -85,7 +85,12 @@ def restaurant_reg(restro: RestaurantCreate, db: Session = Depends(get_db)):
             city=address_details.get("city", "") or address_details.get("village", ""),
             state=address_details.get("state", ""),
             postal_code=address_details.get("postcode", ""),
-            country=address_details.get("country", "India")
+            country=address_details.get("country", "India"),
+            bank_account_number=restro.bank_account_number,
+            ifsc_code=restro.ifsc_code,
+            account_holder_name=restro.account_holder_name,
+            bank_name=restro.bank_name,
+
         )
 
         db.add(new_restro)
@@ -107,7 +112,11 @@ def restaurant_reg(restro: RestaurantCreate, db: Session = Depends(get_db)):
             country=new_restro.country,
             latitude=new_restro.latitude,
             longitude=new_restro.longitude,
-            is_primary=True
+            is_primary=True,
+            bank_account_number=restro.bank_account_number,
+            ifsc_code=restro.ifsc_code,
+            account_holder_name=restro.account_holder_name,
+            bank_name=restro.bank_name,
         )
         db.add(location)
         db.commit()

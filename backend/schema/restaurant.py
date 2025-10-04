@@ -17,6 +17,10 @@ class RestaurantLocationRead(BaseModel):
     longitude: float
     phone: Optional[str] = None
     is_primary: Optional[bool] = False
+    bank_account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    account_holder_name: Optional[str] = None
+    bank_name: Optional[str] = None
     created_at: Optional[datetime]
 
     class Config:
@@ -38,6 +42,12 @@ class RestaurantCreate(BaseModel):
     country: Optional[str] = "India"
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    bank_account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    account_holder_name: Optional[str] = None
+    bank_name: Optional[str] = None
+
+    
 
     
     class Config:
@@ -51,6 +61,10 @@ class RestaurantRead(BaseModel):
     email: Optional[EmailStr] = None
     description: Optional[str] = None
     is_active: Optional[bool] = True
+    bank_account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    account_holder_name: Optional[str] = None
+    bank_name: Optional[str] = None
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
     deleted_at: Optional[datetime] = None
@@ -80,6 +94,10 @@ class RestaurantLoginRead(BaseModel):
     longitude: float
     phone: Optional[str] = None
     is_primary: Optional[bool] = False
+    bank_account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    account_holder_name: Optional[str] = None
+    bank_name: Optional[str] = None
     locations: List[RestaurantLocationRead] = []
 
     class Config:
@@ -104,20 +122,31 @@ class RestaurantLoginShow(BaseModel):
     class Config:
         orm_mode = True
 
+
+
+
 class RestaurantUpdate(BaseModel):
+    name: Optional[str] = None
+    owner_name: Optional[str] = None
     phone: Optional[str] = None
-    password: str  # Input only
+    password: Optional[str] = None  # Only if updating password
     email: Optional[EmailStr] = None
-    address_line1: str
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+    address: Optional[str] = None
+    address_line1: Optional[str] = None
     address_line2: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
     postal_code: Optional[str] = None
     country: Optional[str] = "India"
-    latitude: float
-    longitude: float
-    is_primary: Optional[bool] = False
-    locations: List[RestaurantLocationRead] = []
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    bank_account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    account_holder_name: Optional[str] = None
+    bank_name: Optional[str] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        orm_mode = True        
