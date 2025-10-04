@@ -104,7 +104,7 @@ def user_login(user: UserLogin, db: Session = Depends(get_db), user_request: Req
                 httponly=True,
                 secure=True,
                 samesite="Lax",
-                max_age=settings.RESET_ACCESS_TOKEN_EXPIRE_MINS*60
+                max_age=settings.RESET_ACCESS_TOKEN_EXPIRE_MINS
             )
             return response
 
@@ -143,7 +143,7 @@ def user_login(user: UserLogin, db: Session = Depends(get_db), user_request: Req
         value=access_token,
         httponly=True,
         secure=True,
-        samesite="Lax",
+        samesite="lax",
         max_age=settings.RESET_ACCESS_TOKEN_EXPIRE_MINS
     )
 
@@ -152,7 +152,7 @@ def user_login(user: UserLogin, db: Session = Depends(get_db), user_request: Req
         value=refresh_token,
         httponly=True,
         secure=True,
-        samesite="Lax",
+        samesite="lax",
         max_age=settings.RESET_REFRESH_TOKEN_EXPIRE_DAYS
     )
 

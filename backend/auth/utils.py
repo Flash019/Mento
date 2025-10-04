@@ -1,12 +1,12 @@
 from datetime import datetime, timedelta
 from typing import Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session,joinedload
 from sql_db import get_db
 from jose import jwt, JWTError
 from fastapi import HTTPException, status, Depends
 from passlib.context import CryptContext
 from pydantic_settings import BaseSettings
-
+from model.restaurant import RestaurantLocation,Restaurant
 from model.user import User
 import logging
 
@@ -62,7 +62,7 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
-    
+
 
 # JWT Tokens
 
@@ -188,3 +188,25 @@ def access_token_decode(token:str)  -> Optional[dict]:
         return payload
     except JWTError:
         return None
+    
+
+
+def authenticate_restro(phone: str, password: str, db: Session) -> Optional[RestaurantLocation]:
+    # Fetch the restaurant by phone
+    restro = db.query(RestaurantLocation).filter(RestaurantLocation.phone == phone).first()
+    
+    # Log if restaurant is found or not
+    if not restro:
+        logger.info(f"Restaurant with phone {phone} not found.")
+        return None
+
+    # Log the password hash and the password being attempted to login
+    logger.info(f"Restaurant {restro.name} found. Verifying password...")
+
+    # Verify password against the stored hash
+    if not verify_password(password, restro.password_hash):
+        logger.info(f"Password for restaurant with phone {phone} is invalid.")
+        return None
+    
+    logger.info(f"Authenticated restaurant: {restro.name}")
+    return restro

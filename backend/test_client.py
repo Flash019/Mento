@@ -1,27 +1,18 @@
 import requests
 
-def get_lat_long_from_address(address: str):
-    url = "https://nominatim.openstreetmap.org/search"
+def test_reverse_geocode(lat, lng):
+    url = "https://nominatim.openstreetmap.org/reverse"
     params = {
-        "q": address,
         "format": "json",
-        "limit": 1
+        "lat": str(lat),
+        "lon": str(lng),
+        "addressdetails": 1
     }
     headers = {
-        "User-Agent": "my-app"  # Nominatim requires a User-Agent
+        "User-Agent": "my-test-app"
     }
     response = requests.get(url, params=params, headers=headers)
-    result = response.json()
-    
-    if result:
-        location = result[0]
-        lat = float(location["lat"])
-        lng = float(location["lon"])
-        return lat, lng
-    else:
-        raise Exception("Geocoding failed: No results found")
+    print("Status Code:", response.status_code)
+    print("Response JSON:", response.json())
 
-# Test
-address = "1600 Amphitheatre Parkway, Mountain View, CA"
-lat, lng = get_lat_long_from_address(address)
-print(f"Latitude: {lat}, Longitude: {lng}")
+test_reverse_geocode(22.21167375, 87.39074425)

@@ -15,3 +15,5 @@ pydantic-settings
 googlemaps
 python-decouple
 argon2_cffi
+
+orjson
