@@ -204,3 +204,56 @@ async def toggle_rider_status(on_duty: bool, db: Session = Depends(get_db), requ
     return response
 
 
+@router.get("/auth/profile/rider",status_code=201, response_model=DeliveryPersonLoginShow)
+async def get_rider_profile( db: Session = Depends(get_db), rider_request: Request = None):
+    access_token = rider_request.cookies.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Missing access token")
+
+    try:
+        payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        db_user = db.query(DeliveryPerson).filter(DeliveryPerson.id == user_id).first()
+        if not db_user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+    except JWTError:
+        refresh_token_cookie = rider_request.cookies.get("refresh_token")
+        if not refresh_token_cookie:
+            raise HTTPException(status_code=401, detail="Invalid or expired token. Missing refresh token.")
+
+        db_refresh = db.query(RefreshToken).filter(
+            RefreshToken.token_hash == RefreshToken.hash_token(refresh_token_cookie),
+            RefreshToken.is_active == True
+        ).first()
+
+        if not db_refresh:
+            raise HTTPException(status_code=401, detail="Invalid or expired refresh token.")
+        try:
+            payload_refresh = jwt.decode(refresh_token_cookie, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            user_id_from_refresh = payload_refresh.get("sub")
+            if user_id_from_refresh != str(db_user.id):
+                raise HTTPException(status_code=401, detail="Invalid refresh token.")
+            access_token = access_token_encode({"sub": db_user.id, "role": "delivery"})
+            content = DeliveryPersonLoginShow.from_orm(db_user).dict()
+            response = ORJSONResponse(content=content)
+            response.set_cookie(
+                key="access_token",
+                value=access_token,
+                httponly=True,
+                secure=True,
+                samesite="Lax",
+                max_age=settings.RESET_ACCESS_TOKEN_EXPIRE_MINS * 60 * 60
+            )
+            return response
+
+        except JWTError:
+            raise HTTPException(status_code=401, detail="Refresh token is invalid or expired.")
+
+    return db_user
+
+        
+
