@@ -7,6 +7,7 @@ from fastapi import HTTPException, status, Depends
 from passlib.context import CryptContext
 from pydantic_settings import BaseSettings
 from model.restaurant import RestaurantLocation,Restaurant
+from model.delivery_person import DeliveryPerson
 from model.user import User
 import logging
 
@@ -209,3 +210,12 @@ def get_current_restaurant(
         return restaurant
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error fetching restaurant data from token")
+    
+
+def get_current_rider(db: Session, phone: str, password: str):
+    user = db.query(DeliveryPerson).filter(DeliveryPerson.phone == phone).first()
+    if not user:
+        return None
+    if not verify_password(password, user.password_hash):
+        return None
+    return user

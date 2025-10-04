@@ -224,7 +224,7 @@ async def restro_login(
     return response
 
 @router.patch("/auth/restaurant/toggle_status")
-def toggle_restaurant_status(is_open: bool, db: Session = Depends(get_db), request: Request = None):
+async def toggle_restaurant_status(is_open: bool, db: Session = Depends(get_db), request: Request = None):
     access_token = request.cookies.get("access_token")
     refresh_token_cookie = request.cookies.get("refresh_token")
 

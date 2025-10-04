@@ -42,3 +42,33 @@ class DeliveryPersonRead(DeliveryPersonCreate):
 
     class Config:
         orm_mode = True
+
+
+class DeliveryPersonLogin(BaseModel):
+    phone: str
+    password: str 
+    current_latitude: float
+    current_longitude: float       
+    class Config:
+        orm_mode = True
+
+class DeliveryPersonLoginShow(BaseModel):
+    id: str
+    full_name: str
+    phone: str
+    address: Optional[str] = None
+    vehicle_number: Optional[str] = None
+    rc_number: Optional[str] = None
+    current_latitude: Optional[float] 
+    current_longitude: Optional[float] 
+    is_active: bool = True
+    rating: Optional[float] = 0.0
+    total_deliveries: Optional[int] = 0
+    last_location_update: Optional[datetime] 
+    class Config:
+        orm_mode = True
+        from_attributes = True
+
+class RiderLocationUpdate(BaseModel):
+    latitude: float
+    longitude: float
