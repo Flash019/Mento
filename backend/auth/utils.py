@@ -191,22 +191,21 @@ def access_token_decode(token:str)  -> Optional[dict]:
     
 
 
-def authenticate_restro(phone: str, password: str, db: Session) -> Optional[RestaurantLocation]:
-    # Fetch the restaurant by phone
-    restro = db.query(RestaurantLocation).filter(RestaurantLocation.phone == phone).first()
-    
-    # Log if restaurant is found or not
-    if not restro:
-        logger.info(f"Restaurant with phone {phone} not found.")
-        return None
-
-    # Log the password hash and the password being attempted to login
-    logger.info(f"Restaurant {restro.name} found. Verifying password...")
-
-    # Verify password against the stored hash
-    if not verify_password(password, restro.password_hash):
-        logger.info(f"Password for restaurant with phone {phone} is invalid.")
-        return None
-    
-    logger.info(f"Authenticated restaurant: {restro.name}")
-    return restro
+def get_current_restaurant(
+    authorization: str = Depends(verify_token), db: Session = Depends(get_db)
+) -> Restaurant:
+    """
+    This function will extract the restaurant ID from the JWT token and fetch
+    the corresponding restaurant from the database.
+    """
+    try:
+        payload = authorization
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid user ID in token")
+        restaurant = db.query(Restaurant).filter(Restaurant.id == user_id).first()
+        if restaurant is None:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+        return restaurant
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Error fetching restaurant data from token")

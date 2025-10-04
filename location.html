@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Get Current Location</title>
+</head>
+<body>
+    <h2>Get Your Shop Location</h2>
+    <button onclick="getLocation()">Get Location</button>
+
+    <p id="status"></p>
+    <p><strong>Latitude:</strong> <span id="lat"></span></p>
+    <p><strong>Longitude:</strong> <span id="lng"></span></p>
+
+    <script>
+        function getLocation() {
+            const status = document.getElementById("status");
+            const latElem = document.getElementById("lat");
+            const lngElem = document.getElementById("lng");
+
+            if (!navigator.geolocation) {
+                status.textContent = "Geolocation is not supported by your browser.";
+                return;
+            }
+
+            status.textContent = "Getting location...";
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const latitude = position.coords.latitude;
+                    const longitude = position.coords.longitude;
+
+                    latElem.textContent = latitude;
+                    lngElem.textContent = longitude;
+                    status.textContent = "Location retrieved successfully.";
+
+                    // 🔽 Optional: Send to FastAPI backend
+                    sendToBackend(latitude, longitude);
+                },
+                (error) => {
+                    status.textContent = "Unable to retrieve location: " + error.message;
+                }
+            );
+        }
+
+        function sendToBackend(lat, lng) {
+            fetch("http://127.0.0.1:8000/api/auth/restaurant/signup", {  // 🔁 Replace with your actual FastAPI endpoint
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    latitude: lat,
+                    longitude: lng
+                    // Add any other fields your backend needs (e.g., name, phone, etc.)
+                })
+            })
+            .then(response => {
+                if (response.ok) {
+                    alert("Location sent to backend successfully.");
+                } else {
+                    alert("Failed to send location.");
+                }
+            })
+            .catch(error => {
+                console.error("Error sending location:", error);
+            });
+        }
+    </script>
+</body>
+</html>

@@ -3,7 +3,7 @@ from fastapi.responses import ORJSONResponse
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import uuid
-from jose import JWTError
+from jose import JWTError,jwt
 import logging
 from sql_db import get_db
 from model.restaurant import Restaurant, RestaurantLocation
@@ -16,10 +16,11 @@ from schema.restaurant import (
 )
 from auth.utils import (
     hash_password,
+    get_current_restaurant,
     access_token_encode,
     refresh_token_encode,
     refresh_token_decode,
-   
+   settings
 )
 from geocoding_api import get_lat_long_from_address
 
@@ -220,3 +221,43 @@ async def restro_login(
     )
 
     return response
+
+@router.get('/auth/restaurant/profile', response_model=RestaurantLoginShow)
+async def get_profile(
+    restro_request: Request = None,
+    db: Session = Depends(get_db),
+):
+    access_token = restro_request.cookies.get("access_token")
+    
+    if not access_token:
+        logger.error("Access token is missing from the request.")
+        raise HTTPException(status_code=401, detail="Missing Credentials")
+
+    logger.info(f"Received access token: {access_token}")
+
+    try:
+        # Decode the token
+        payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        logger.info(f"Decoded payload: {payload}")
+
+        if payload.get("type") != "access":
+            logger.error("Invalid token type in the payload.")
+            raise HTTPException(status_code=401, detail="Invalid access token")
+        
+        user_id = payload.get("sub")
+        if not user_id:
+            logger.error("No user_id in the payload.")
+            raise HTTPException(status_code=401, detail="Invalid access token")
+
+    except JWTError as e:
+        logger.error(f"Error decoding token: {str(e)}")
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    # Query the restaurant from the database
+    db_user = db.query(Restaurant).filter(Restaurant.id == user_id).first()
+    if not db_user:
+        logger.error(f"Restaurant with ID {user_id} not found.")
+        raise HTTPException(status_code=404, detail="User not found")
+
+    logger.info(f"User found: {db_user.name}")
+    return db_user
