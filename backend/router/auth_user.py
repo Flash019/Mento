@@ -23,20 +23,16 @@ router = APIRouter()
 
 @router.post('/auth/user/signup', status_code=201)
 async def user_registration(request: UserCreate, db: Session = Depends(get_db)):
-    # Check for duplicate email
     if db.query(User).filter(User.email == request.email).first():
         raise HTTPException(status_code=400, detail="Email ID Already Exists")
     
-    # Check for duplicate phone
     if db.query(User).filter(User.phone == request.phone).first():
         raise HTTPException(status_code=400, detail="Phone Number Already Used")
     
     try:
-        # Handle latitude and longitude
         lat = float(request.latitude) if request.latitude else None
         lng = float(request.longitude) if request.longitude else None
 
-        # If lat/lng missing, attempt to get from address
         if (lat is None or lng is None or lat == 0 or lng == 0) and request.address:
             address_details = get_lat_long_from_address(request.address)
             lat = address_details.get("latitude")
@@ -45,10 +41,8 @@ async def user_registration(request: UserCreate, db: Session = Depends(get_db)):
         if lat is None or lng is None:
             raise HTTPException(status_code=400, detail="Latitude and Longitude are required.")
 
-        # Hash password
         password_hashed = hash_password(request.password)
 
-        # Create new user
         new_user = User(
             full_name=request.full_name,
             email=request.email,
@@ -61,14 +55,12 @@ async def user_registration(request: UserCreate, db: Session = Depends(get_db)):
             is_verified=False
         )
 
-        # Debug before saving
         logging.debug(f"New user to be added: {new_user.__dict__}")
 
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
 
-        # Debug after saving
         logging.debug(f"New user saved: {new_user.__dict__}")
 
     except Exception as e:
@@ -88,13 +80,10 @@ async def user_registration(request: UserCreate, db: Session = Depends(get_db)):
 async def user_login(user: UserLogin, db: Session = Depends(get_db), user_request: Request = None):
     access_token_cookie = user_request.cookies.get("access_token") if user_request else None
     refresh_token_cookie = user_request.cookies.get("refresh_token") if user_request else None
-
-    # Authenticate user credentials
     db_user = authenticate_user(user.phone, user.password, db)
     if not db_user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Helper to create response and set cookies
     def create_response(access_token, refresh_token=None):
         response = JSONResponse(content={
             "full_name": db_user.full_name,
@@ -123,7 +112,6 @@ async def user_login(user: UserLogin, db: Session = Depends(get_db), user_reques
             )
         return response
 
-    # 1️⃣ Check access token
     if access_token_cookie:
         try:
             payload = access_token_decode(access_token_cookie)
@@ -132,7 +120,6 @@ async def user_login(user: UserLogin, db: Session = Depends(get_db), user_reques
         except JWTError:
             pass  # Invalid/expired → move to refresh token
 
-    # 2️⃣ Check refresh token
     if refresh_token_cookie:
         db_refresh = db.query(RefreshToken).filter(
             RefreshToken.user_id == db_user.id,
@@ -158,16 +145,14 @@ async def user_login(user: UserLogin, db: Session = Depends(get_db), user_reques
                     db.add(refresh_entry)
                     db.commit()
 
-                    # Issue new access token
                     new_access = access_token_encode({"sub": db_user.id, "role": "user"})
                     return create_response(new_access, new_refresh)
 
             except JWTError:
-                # Invalidate refresh token if decode failed
                 db_refresh.is_active = False
                 db.commit()
 
-    # 3️⃣ No valid tokens → issue both new access + refresh tokens
+    # No valid tokens → issue both new access + refresh tokens
     new_access = access_token_encode({"sub": db_user.id, "role": "user"})
     new_refresh = refresh_token_encode({"sub": db_user.id, "role": "user"})
     hashed_token = RefreshToken.hash_token(new_refresh)
@@ -211,33 +196,28 @@ async def user_logout(user_request: Request, db: Session = Depends(get_db)):
 # GET PROFILE 
 @router.get("/auth/profile/user", response_model=UserLoginRead)
 async def get_user_profile(db: Session = Depends(get_db), user_request: Request = None):
-    # Step 1: Get the access token from cookies
     access_token = user_request.cookies.get("access_token")
     if not access_token:
         raise HTTPException(status_code=401, detail="Missing access token")
 
     try:
-        # Step 2: Decode the access token
         payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
 
-        # Get the user ID from the token's payload
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
 
-        # Step 3: Retrieve the user from the database using the user ID
         db_user = db.query(User).filter(User.id == user_id).first()
         if not db_user:
             raise HTTPException(status_code=404, detail="User not found")
 
     except JWTError:
-        # Step 4: Handle the case where the token is invalid or expired
-        # Check for refresh token if the access token is invalid
+        
         refresh_token_cookie = user_request.cookies.get("refresh_token")
         if not refresh_token_cookie:
             raise HTTPException(status_code=401, detail="Invalid or expired token. Missing refresh token.")
 
-        # If refresh token exists, verify and issue a new access token
+       
         db_refresh = db.query(RefreshToken).filter(
             RefreshToken.token_hash == RefreshToken.hash_token(refresh_token_cookie),
             RefreshToken.is_active == True
@@ -246,14 +226,13 @@ async def get_user_profile(db: Session = Depends(get_db), user_request: Request 
         if not db_refresh:
             raise HTTPException(status_code=401, detail="Invalid or expired refresh token.")
 
-        # Decode refresh token to ensure it's valid and not expired
+        
         try:
             payload_refresh = jwt.decode(refresh_token_cookie, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
             user_id_from_refresh = payload_refresh.get("sub")
             if user_id_from_refresh != str(db_user.id):
                 raise HTTPException(status_code=401, detail="Invalid refresh token.")
 
-            # Issue a new access token
             access_token = access_token_encode({"sub": db_user.id, "role": "user"})
 
             response = JSONResponse(content={
@@ -265,7 +244,6 @@ async def get_user_profile(db: Session = Depends(get_db), user_request: Request 
                 "longitude": db_user.longitude
             })
 
-            # Set the new access token cookie
             response.set_cookie(
                 key="access_token",
                 value=access_token,
@@ -280,7 +258,6 @@ async def get_user_profile(db: Session = Depends(get_db), user_request: Request 
         except JWTError:
             raise HTTPException(status_code=401, detail="Refresh token is invalid or expired.")
 
-    # If access token is valid, return the profile
     return db_user
 
 
@@ -309,7 +286,6 @@ def update_user_profile(
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Update allowed fields
     allowed_fields = ["full_name", "email", "phone", "address", "latitude", "longitude"]
     for field, value in update_data.dict(exclude_unset=True).items():
         setattr(db_user, field, value)

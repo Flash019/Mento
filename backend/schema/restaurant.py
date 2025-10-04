@@ -103,3 +103,4 @@ class RestaurantLoginShow(BaseModel):
 
     class Config:
         orm_mode = True
+

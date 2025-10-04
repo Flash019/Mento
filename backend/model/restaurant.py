@@ -64,3 +64,7 @@ class RestaurantLocation(Base):
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
 
     restaurant = relationship("Restaurant", back_populates="locations")
+
+
+
+    

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import ORJSONResponse
+from fastapi.responses import JSONResponse,ORJSONResponse
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import uuid
@@ -222,42 +222,66 @@ async def restro_login(
 
     return response
 
-@router.get('/auth/restaurant/profile', response_model=RestaurantLoginShow)
+@router.get('/auth/restaurant/profile', response_model=RestaurantRead)
 async def get_profile(
-    restro_request: Request = None,
-    db: Session = Depends(get_db),
-):
-    access_token = restro_request.cookies.get("access_token")
+    db: Session = Depends(get_db), restro_request: Request = None):
     
+    access_token = restro_request.cookies.get("access_token")
     if not access_token:
-        logger.error("Access token is missing from the request.")
-        raise HTTPException(status_code=401, detail="Missing Credentials")
-
-    logger.info(f"Received access token: {access_token}")
+        raise HTTPException(status_code=401, detail="Missing access token")
 
     try:
-        # Decode the token
         payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        logger.info(f"Decoded payload: {payload}")
 
-        if payload.get("type") != "access":
-            logger.error("Invalid token type in the payload.")
-            raise HTTPException(status_code=401, detail="Invalid access token")
-        
         user_id = payload.get("sub")
-        if not user_id:
-            logger.error("No user_id in the payload.")
-            raise HTTPException(status_code=401, detail="Invalid access token")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
 
-    except JWTError as e:
-        logger.error(f"Error decoding token: {str(e)}")
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        db_user = db.query(Restaurant).filter(Restaurant.id == user_id).first()
+        if not db_user:
+            raise HTTPException(status_code=404, detail="User not found")
 
-    # Query the restaurant from the database
-    db_user = db.query(Restaurant).filter(Restaurant.id == user_id).first()
-    if not db_user:
-        logger.error(f"Restaurant with ID {user_id} not found.")
-        raise HTTPException(status_code=404, detail="User not found")
+    except JWTError:
+        
+        refresh_token_cookie = restro_request.cookies.get("refresh_token")
+        if not refresh_token_cookie:
+            raise HTTPException(status_code=401, detail="Invalid or expired token. Missing refresh token.")
 
-    logger.info(f"User found: {db_user.name}")
+        db_refresh = db.query(RefreshToken).filter(
+            RefreshToken.token_hash == RefreshToken.hash_token(refresh_token_cookie),
+            RefreshToken.is_active == True
+        ).first()
+
+        if not db_refresh:
+            raise HTTPException(status_code=401, detail="Invalid or expired refresh token.")
+
+        try:
+            payload_refresh = jwt.decode(refresh_token_cookie, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            user_id_from_refresh = payload_refresh.get("sub")
+            if user_id_from_refresh != str(db_user.id):
+                raise HTTPException(status_code=401, detail="Invalid refresh token.")
+            access_token = access_token_encode({"sub": db_user.id, "role": "restaurant"})
+            response = JSONResponse(content={
+                "owner_name": db_user.owner_name,
+                "email": db_user.email,
+                "phone": db_user.phone,
+                "Status": db_user.is_active,
+                "latitude": float(db_user.latitude) if db_user.latitude else None,
+                "longitude": float(db_user.longitude) if db_user.longitude else None,
+                "address_line1": db_user.address,
+                "address_line2": db_user.address_line2
+            })
+            response.set_cookie(
+                key="access_token",
+                value=access_token,
+                httponly=True,
+                secure=True,
+                samesite="Lax",
+                max_age=settings.RESET_ACCESS_TOKEN_EXPIRE_MINS * 60 * 60
+            )
+            return response
+
+        except JWTError:
+            raise HTTPException(status_code=401, detail="Refresh token is invalid or expired.")
+
     return db_user
