@@ -354,3 +354,29 @@ async def get_profile(
     return db_user
 
 
+@router.post("/auth/logout/restaurant")
+async def restro_logout(log : Request, db :Session = Depends(get_db)):
+    access_cookie = log.cookies.get("access_token")
+    refresh_cookie = log.cookies.get("refresh_token")
+    if access_cookie:
+        hashed_cookie = RefreshToken.hash_token(access_cookie)
+        db_rcookie = db.query(RefreshToken).filter(RefreshToken.token_hash == hashed_cookie,RefreshToken.is_active == True).first()
+        if db_rcookie:
+            db_rcookie.is_active =False
+            db.commit()
+            response = JSONResponse(content={"msg": "Successfully logged out"})
+        elif refresh_cookie :
+            hashed_cookie = RefreshToken.hash_token(refresh_cookie)
+        db_cookie = db.query(RefreshToken).filter(RefreshToken.token_hash == hashed_cookie,RefreshToken.is_active == True).first()
+        if db_cookie:
+            db_cookie.is_active =False
+            db.commit()
+            response = JSONResponse(content={"msg": "Successfully logged out"})
+        db_cookie = db.query(RefreshToken).filter(RefreshToken.token_hash == hashed_cookie,RefreshToken.is_active == True).first()
+        if db_cookie:
+            db_cookie.is_active =False
+            db.commit()
+            response = JSONResponse(content={"msg": "Successfully logged out"})
+    response.delete_cookie("access_token")
+    response.delete_cookie("refresh_token")
+    return response
