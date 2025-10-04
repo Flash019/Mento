@@ -104,3 +104,20 @@ class RestaurantLoginShow(BaseModel):
     class Config:
         orm_mode = True
 
+class RestaurantUpdate(BaseModel):
+    phone: Optional[str] = None
+    password: str  # Input only
+    email: Optional[EmailStr] = None
+    address_line1: str
+    address_line2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    postal_code: Optional[str] = None
+    country: Optional[str] = "India"
+    latitude: float
+    longitude: float
+    is_primary: Optional[bool] = False
+    locations: List[RestaurantLocationRead] = []
+
+    class Config:
+        orm_mode = True

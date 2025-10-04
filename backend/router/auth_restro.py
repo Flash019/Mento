@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse,ORJSONResponse
+from jose.exceptions import ExpiredSignatureError
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import uuid
@@ -12,7 +13,7 @@ from schema.restaurant import (
     RestaurantCreate,
     RestaurantRead,
     RestaurantLogin,
-    RestaurantLoginShow
+    RestaurantLoginShow,RestaurantUpdate
 )
 from auth.utils import (
     hash_password,
@@ -222,6 +223,72 @@ async def restro_login(
 
     return response
 
+@router.patch("/auth/restaurant/toggle_status")
+def toggle_restaurant_status(is_open: bool, db: Session = Depends(get_db), request: Request = None):
+    access_token = request.cookies.get("access_token")
+    refresh_token_cookie = request.cookies.get("refresh_token")
+
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Missing access token")
+
+    restaurant_id = None
+    new_access_token = None
+
+    
+    try:
+        payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        restaurant_id = payload.get("sub")
+
+    
+    except JWTError as e:
+        if "Signature has expired" in str(e):
+            if not refresh_token_cookie:
+                raise HTTPException(status_code=401, detail="Access token expired and no refresh token found")
+
+            db_refresh = db.query(RefreshToken).filter(
+                RefreshToken.token_hash == RefreshToken.hash_token(refresh_token_cookie),
+                RefreshToken.is_active == True
+            ).first()
+
+            if not db_refresh:
+                raise HTTPException(status_code=401, detail="Invalid or inactive refresh token")
+
+            try:
+                payload_refresh = jwt.decode(refresh_token_cookie, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+                restaurant_id = payload_refresh.get("sub")
+
+                # Issue new access token
+                new_access_token = access_token_encode({"sub": restaurant_id, "role": "restaurant"})
+            except JWTError:
+                raise HTTPException(status_code=401, detail="Refresh token is invalid or expired")
+        else:
+            raise HTTPException(status_code=401, detail="Invalid access token")
+
+   
+    db_restaurant = db.query(Restaurant).filter(Restaurant.id == restaurant_id).first()
+    if not db_restaurant:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+
+    db_restaurant.is_open = is_open
+    db.commit()
+    db.refresh(db_restaurant)
+
+   
+    response = JSONResponse({
+        "message": f"{db_restaurant.name} is now {'open' if is_open else 'closed'}",
+        "is_open": db_restaurant.is_open
+    })
+
+    if new_access_token:
+        response.set_cookie(
+            key="access_token",
+            value=new_access_token,
+            httponly=True,
+            secure=False,
+            samesite="Lax"
+        )
+
+    return response
 @router.get('/auth/restaurant/profile', response_model=RestaurantRead)
 async def get_profile(
     db: Session = Depends(get_db), restro_request: Request = None):
@@ -285,3 +352,5 @@ async def get_profile(
             raise HTTPException(status_code=401, detail="Refresh token is invalid or expired.")
 
     return db_user
+
+
