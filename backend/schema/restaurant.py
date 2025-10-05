@@ -72,6 +72,7 @@ class RestaurantRead(BaseModel):
 
     class Config:
         orm_mode = True
+        from_orm = True
 
 class RestaurantLogin(BaseModel):
     phone: str
@@ -149,4 +150,5 @@ class RestaurantUpdate(BaseModel):
     updated_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True        
+        orm_mode = True  
+        from_orm = True      

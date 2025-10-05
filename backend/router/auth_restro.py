@@ -1,9 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request,Body,Header
 from fastapi.responses import JSONResponse,ORJSONResponse
+from typing import Tuple, Optional
+from sqlalchemy import or_
 from jose.exceptions import ExpiredSignatureError
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import uuid
+from sqlalchemy.exc import IntegrityError
 from jose import JWTError,jwt
 import logging
 from sql_db import get_db
@@ -207,7 +210,7 @@ async def restro_login(
         role="restaurant",
         token_hash=hashed_token,
         is_active=True,
-        expires_at=datetime.utcnow() + timedelta(days=30)
+        expires_at=datetime.utcnow() + timedelta(days=settings.RESET_REFRESH_TOKEN_EXPIRE_DAYS)
     )
     db.add(new_refresh)
     db.commit()
@@ -389,3 +392,373 @@ async def restro_logout(log : Request, db :Session = Depends(get_db)):
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
     return response
+
+
+
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+
+# Fields that are allowed to be updated
+ALLOWED_FIELDS = {
+    "phone",
+    "password",
+    "email",
+    "description",
+    "address",
+    "address_line2",
+    "city",
+    "state",
+    "postal_code",
+    "country",
+    "latitude",
+    "longitude",
+    "bank_account_number",
+    "ifsc_code",
+    "account_holder_name",
+    "bank_name",
+}
+
+# Fields that require uniqueness validation
+UNIQUE_FIELDS = {"email", "phone"}
+
+# Fields that should update the primary location as well
+LOCATION_SYNC_FIELDS = {
+    "phone",
+    "address",
+    "address_line2",
+    "city",
+    "state",
+    "postal_code",
+    "country",
+    "latitude",
+    "longitude",
+    "bank_account_number",
+    "ifsc_code",
+    "account_holder_name",
+    "bank_name",
+}
+
+
+def extract_token_from_request(request: Request) -> str:
+    """Extract access token from cookies or Authorization header."""
+    access_token = request.cookies.get("access_token")
+    
+    if not access_token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            access_token = auth_header.split(" ")[1]
+    
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Missing access token")
+    
+    return access_token
+
+
+def verify_and_refresh_token(
+    access_token: str, 
+    refresh_token: str, 
+    db: Session
+) -> Tuple[str, Optional[str]]:
+    """
+    Verify access token, refresh if expired using refresh token.
+    Returns: (user_id, new_access_token or None)
+    """
+    try:
+        payload = jwt.decode(
+            access_token, 
+            settings.SECRET_KEY, 
+            algorithms=[settings.ALGORITHM]
+        )
+        
+        if payload.get("type") != "access":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+        
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+        
+        return user_id, None
+    
+    except JWTError as e:
+        # Token expired or invalid - try refresh
+        if not refresh_token:
+            raise HTTPException(
+                status_code=401, 
+                detail="Access token expired and no refresh token provided"
+            )
+        
+        # Verify refresh token
+        db_refresh = db.query(RefreshToken).filter(
+            RefreshToken.token_hash == RefreshToken.hash_token(refresh_token),
+            RefreshToken.is_active == True
+        ).first()
+        
+        if not db_refresh:
+            raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+        
+        try:
+            refresh_payload = jwt.decode(
+                refresh_token,
+                settings.SECRET_KEY,
+                algorithms=[settings.ALGORITHM]
+            )
+            user_id = refresh_payload.get("sub")
+            
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Invalid refresh token payload")
+            
+            # Generate new access token
+            new_access_token = access_token_encode({
+                "sub": user_id,
+                "role": "restaurant"
+            })
+            
+            logger.info(f"Access token refreshed for restaurant: {user_id}")
+            return user_id, new_access_token
+        
+        except JWTError:
+            db_refresh.is_active = False
+            db.commit()
+            raise HTTPException(status_code=401, detail="Refresh token is invalid or expired")
+
+
+def validate_unique_fields(
+    db: Session,
+    update_dict: dict,
+    current_user_id: str,
+    current_restaurant: Restaurant
+) -> None:
+    """Validate that email/phone aren't already used by another restaurant."""
+    if not any(field in update_dict for field in UNIQUE_FIELDS):
+        return
+    
+    # Only check fields that are actually being changed
+    fields_to_check = []
+    
+    if "email" in update_dict and update_dict["email"] != current_restaurant.email:
+        fields_to_check.append(("email", update_dict["email"]))
+    
+    if "phone" in update_dict and update_dict["phone"] != current_restaurant.phone:
+        fields_to_check.append(("phone", update_dict["phone"]))
+    
+    # If no fields are actually changing, skip validation
+    if not fields_to_check:
+        return
+    
+    # Build filters for changed fields only
+    filters = []
+    for field_name, field_value in fields_to_check:
+        filters.append(getattr(Restaurant, field_name) == field_value)
+    
+    duplicate = db.query(Restaurant).filter(
+        or_(*filters),
+        Restaurant.id != current_user_id
+    ).first()
+    
+    if duplicate:
+        # Determine which field caused the conflict
+        for field_name, field_value in fields_to_check:
+            if getattr(duplicate, field_name) == field_value:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{field_name.capitalize()} already in use by another restaurant"
+                )
+
+
+def process_location_update(update_dict: dict) -> dict:
+    """Process address-related updates and fetch geocoding if needed."""
+    # If address is updated but no lat/lng provided, geocode it
+    if "address" in update_dict and ("latitude" not in update_dict or "longitude" not in update_dict):
+        try:
+            lat, lng = get_lat_long_from_address(update_dict["address"])
+            update_dict["latitude"] = float(lat) if lat else None
+            update_dict["longitude"] = float(lng) if lng else None
+            
+            # Get additional address details
+            address_details = get_lat_long_from_address(lat, lng)
+            
+            # Only update fields that aren't explicitly provided
+            if "city" not in update_dict:
+                update_dict["city"] = address_details.get("city", "") or address_details.get("village", "")
+            if "state" not in update_dict:
+                update_dict["state"] = address_details.get("state", "")
+            if "postal_code" not in update_dict:
+                update_dict["postal_code"] = address_details.get("postcode", "")
+            if "country" not in update_dict:
+                update_dict["country"] = address_details.get("country", "India")
+            
+            logger.info(f"Geocoded address: lat={lat}, lng={lng}")
+        except Exception as e:
+            logger.warning(f"Geocoding failed: {str(e)}")
+    
+    return update_dict
+
+
+def sync_primary_location(
+    db: Session,
+    restaurant: Restaurant,
+    update_dict: dict
+) -> None:
+    """Sync updated fields to the primary restaurant location."""
+    location_updates = {
+        k: v for k, v in update_dict.items() 
+        if k in LOCATION_SYNC_FIELDS
+    }
+    
+    if not location_updates:
+        return
+    
+    primary_location = db.query(RestaurantLocation).filter(
+        RestaurantLocation.restaurant_id == restaurant.id,
+        RestaurantLocation.is_primary == True
+    ).first()
+    
+    if primary_location:
+        # Map restaurant fields to location fields
+        field_mapping = {
+            "address": "address_line1",
+            "phone": "phone",
+        }
+        
+        for field, value in location_updates.items():
+            location_field = field_mapping.get(field, field)
+            setattr(primary_location, location_field, value)
+        
+        primary_location.updated_at = datetime.utcnow()
+        logger.info(f"Synced {len(location_updates)} fields to primary location")
+
+
+@router.put("/auth/profile/restaurant", response_model=RestaurantRead)
+def update_restaurant_profile(
+    update_data: RestaurantUpdate = Body(...),
+    db: Session = Depends(get_db),
+    request: Request = None
+):
+    #  Extract and verify authentication
+    access_token = extract_token_from_request(request)
+    refresh_token = request.cookies.get("refresh_token")
+    
+    user_id, new_access_token = verify_and_refresh_token(
+        access_token, refresh_token, db
+    )
+    
+    #  Get the restaurant
+    restaurant = db.query(Restaurant).filter(Restaurant.id == user_id).first()
+    if not restaurant:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+    
+    #  Prepare update dictionary (only fields explicitly sent by user)
+    raw_data = update_data.dict(exclude_unset=True)
+    
+    # Common placeholder/default values to ignore
+    PLACEHOLDER_VALUES = {"string", "", "0", 0, "user@example.com"}
+    
+    # Filter out invalid values and disallowed fields
+    update_dict = {}
+    for k, v in raw_data.items():
+        # Skip if field not allowed
+        if k not in ALLOWED_FIELDS:
+            logger.debug(f"Skipping disallowed field: {k}")
+            continue
+        
+        # Skip placeholder values
+        if v in PLACEHOLDER_VALUES or v is None:
+            logger.debug(f"Skipping placeholder value for {k}: {v}")
+            continue
+        
+        # For numeric fields, skip if 0 (common placeholder)
+        if k in {"latitude", "longitude"} and v == 0:
+            logger.debug(f"Skipping zero value for {k}")
+            continue
+        
+        # Skip if value is the same as current value (no change)
+        current_value = getattr(restaurant, k, None)
+        if k != "password" and v == current_value:
+            logger.debug(f"Skipping unchanged field: {k}")
+            continue
+        
+        update_dict[k] = v
+    
+    if not update_dict:
+        logger.warning(f"No valid fields to update for restaurant {user_id}")
+        raise HTTPException(
+            status_code=400,
+            detail="No valid fields provided for update. Please provide actual values, not placeholders."
+        )
+    
+    logger.info(f"Restaurant {user_id} updating fields: {list(update_dict.keys())}")
+    
+    logger.info(f"Updating restaurant {user_id} with fields: {list(update_dict.keys())}")
+    
+    # Hash password if being updated
+    if "password" in update_dict:
+        update_dict["password_hash"] = pwd_context.hash(update_dict.pop("password"))
+    
+    #  Validate unique fields (only if they're actually changing)
+    validate_unique_fields(db, update_dict, user_id, restaurant)
+    
+    # Process location/geocoding
+    update_dict = process_location_update(update_dict)
+    
+    try:
+        # Apply updates to restaurant
+        for field, value in update_dict.items():
+            setattr(restaurant, field, value)
+        
+        restaurant.updated_at = datetime.utcnow()
+        
+        # Sync to primary location
+        sync_primary_location(db, restaurant, update_dict)
+        
+        # Commit changes
+        db.commit()
+        db.refresh(restaurant)
+        
+        logger.info(f"Successfully updated restaurant {user_id}")
+        
+        # Refresh and return the updated restaurant
+        db.refresh(restaurant)
+        
+        # Return the updated restaurant directly (FastAPI handles serialization)
+        # If you need to set cookies, create a response manually
+        if new_access_token:
+            # Convert to dict manually to avoid Pydantic issues
+            restaurant_dict = {
+                "id": restaurant.id,
+                "name": restaurant.name,
+                "owner_name": restaurant.owner_name,
+                "phone": restaurant.phone,
+                "email": restaurant.email,
+                "description": restaurant.description,
+                "is_active": restaurant.is_active,
+                "bank_account_number": restaurant.bank_account_number,
+                "ifsc_code": restaurant.ifsc_code,
+                "account_holder_name": restaurant.account_holder_name,
+                "bank_name": restaurant.bank_name,
+                "created_at": restaurant.created_at.isoformat() if restaurant.created_at else None,
+                "updated_at": restaurant.updated_at.isoformat() if restaurant.updated_at else None,
+                "deleted_at": restaurant.deleted_at.isoformat() if restaurant.deleted_at else None,
+                "locations": []
+            }
+            
+            response = JSONResponse(content=restaurant_dict)
+            response.set_cookie(
+                key="access_token",
+                value=new_access_token,
+                httponly=True,
+                secure=True,
+                samesite="lax",
+                max_age=settings.RESET_ACCESS_TOKEN_EXPIRE_MINS * 60
+            )
+            logger.info(f"Set new access token cookie for restaurant {user_id}")
+            return response
+        
+        # No new token needed, return restaurant directly
+        return restaurant
+    
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating restaurant {user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update restaurant profile: {str(e)}"
+        )
