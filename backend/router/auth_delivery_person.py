@@ -1,17 +1,20 @@
-from fastapi import APIRouter,HTTPException,Depends,Request
+from fastapi import APIRouter,HTTPException,Depends,Request,Body
 from fastapi.responses import JSONResponse,ORJSONResponse
-import uuid 
+import uuid , logging
+from typing import Tuple, Optional
 from model.refresh_token import RefreshToken
+from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from sql_db import get_db
-from schema.delivery_person import DeliveryPersonCreate,DeliveryPersonRead,DeliveryPersonLogin,DeliveryPersonLoginShow,RiderLocationUpdate
+from schema.delivery_person import DeliveryPersonCreate,DeliveryPersonRead,DeliveryPersonLogin,DeliveryPersonLoginShow,RiderLocationUpdate,RiderProfileUpdate
 from jose import JWTError,jwt
 from auth.utils import hash_password,get_current_rider,settings,access_token_decode,refresh_token_decode,access_token_encode,refresh_token_encode
 from model.delivery_person import DeliveryPerson
 from geocoding_api import get_lat_long_from_address
 from datetime import datetime,timedelta
 router = APIRouter()
-
+logging.basicConfig(level=logging.INFO)
+logger=logging.getLogger(__name__)
 @router.post('/auth/delivery/signup',response_model=DeliveryPersonRead,status_code=201)
 
 def delivery_guy_reg(delivery:DeliveryPersonCreate,db:Session =Depends(get_db)):
@@ -41,6 +44,10 @@ def delivery_guy_reg(delivery:DeliveryPersonCreate,db:Session =Depends(get_db)):
         rc_number = delivery.rc_number,
         current_latitude = delivery.current_latitude,
         current_longitude = delivery.current_longitude,
+        bank_account_number =delivery.bank_account_number,
+        ifsc_code = delivery.ifsc_code,
+        account_holder_name = delivery.account_holder_name,
+        bank_name = delivery.bank_name
         
 
     )
@@ -283,3 +290,178 @@ async def rider_logout(log: Request, db:Session = Depends(get_db)):
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
     return response
+
+
+
+#UPDATE PROFILE
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+ALLOWED_FIELDS = {
+    "address",
+    "password",
+    "bank_account_number",
+    "ifsc_code",
+    "account_holder_name",
+    "bank_name",
+}
+
+def extract_token_from_request(request : Request) -> str:
+    access_token = request.cookies.get("access_token")
+    if not access_token:
+        auth_header= request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            access_token=auth_header.split(" ")[1]
+
+        if not access_token:
+            raise HTTPException(status_code=401,detail="Invalid Access Token") 
+    return access_token   
+
+def verify_and_refresh_token(
+        access_token :str,
+        refresh_token : str,
+        db :Session = Depends(get_db)
+) -> Tuple[str,Optional[str]]:
+    try:
+        payload = jwt.decode(
+            access_token, 
+            settings.SECRET_KEY, 
+            algorithms=[settings.ALGORITHM]
+        )
+        
+        if payload.get("type") != "access":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+        
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+        
+        return user_id, None
+    
+    except JWTError as e:
+        # Token expired or invalid - try refresh
+        if not refresh_token:
+            raise HTTPException(
+                status_code=401, 
+                detail="Access token expired and no refresh token provided"
+            )
+        
+        # Verify refresh token
+        db_refresh = db.query(RefreshToken).filter(
+            RefreshToken.token_hash == RefreshToken.hash_token(refresh_token),
+            RefreshToken.is_active == True
+        ).first()
+        
+        if not db_refresh:
+            raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+        
+        try:
+            refresh_payload = jwt.decode(
+                refresh_token,
+                settings.SECRET_KEY,
+                algorithms=[settings.ALGORITHM]
+            )
+            user_id = refresh_payload.get("sub")
+            
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Invalid refresh token payload")
+            
+            # Generate new access token
+            new_access_token = access_token_encode({
+                "sub": user_id,
+                "role": "restaurant"
+            })
+            
+            logger.info(f"Access token refreshed for restaurant: {user_id}")
+            return user_id, new_access_token
+        
+        except JWTError:
+            db_refresh.is_active = False
+            db.commit()
+            raise HTTPException(status_code=401, detail="Refresh token is invalid or expired")
+
+@router.put("/auth/profile/rider",status_code=201,response_model=DeliveryPersonLoginShow)
+async def update_rider_profile(
+    update_data: RiderProfileUpdate = Body(...),
+    db: Session =Depends(get_db),
+    request: Request = None
+):
+    access_token = extract_token_from_request(request)
+    refresh_token = request.cookies.get("refresh_token")
+    user_id, new_access_token = verify_and_refresh_token(
+        access_token, refresh_token, db
+    )
+    rider = db.query(DeliveryPerson).filter(DeliveryPerson.id == user_id).first()
+    if not rider:
+        raise HTTPException(status_code=404, detail="Rider not found")
+    raw_data = update_data.dict(exclude_unset=True)
+    PLACEHOLDER_VALUES = {"string", "", "0"  }
+    # Common placeholder/default values and disallowe fields
+    update_dict={}
+    for k, v in raw_data.items():
+        if k not in ALLOWED_FIELDS:
+            logger.debug(f"Skipping disallowed fields:{k}")
+            continue
+        if v in PLACEHOLDER_VALUES or v is None:
+            logger.debug(
+                f" Skipping place holder Value{k}:{v}"
+            )
+            continue
+        current_value=getattr(rider,k , None)
+        if k != "password" and v == current_value:
+            logger.debug(
+                f"Skipping Unchanged Value {k}"
+            )
+            continue
+        update_dict[k] = v
+        if not update_dict:
+            logger.warning(
+                f"No valid fields to update for rider {user_id}"
+            )
+            raise HTTPException(
+            status_code=400,
+            detail="No valid fields provided for update. Please provide actual values, not placeholders."
+        )
+        logger.info(f"Rider{user_id} updating fields: {list(update_dict.keys())} ")
+        logger.info(f"Updating rider {user_id} with fields: {list(update_dict.keys())}")
+        if "password" in update_dict:
+            update_dict["password_hash"] = pwd_context.hash(update_dict.pop("password"))
+        try:
+        # Apply updates to restaurant
+            for field, value in update_dict.items():
+                setattr(rider, field, value)
+            
+            rider.updated_at = datetime.utcnow()    
+            db.commit()
+            db.refresh(rider)
+            
+            logger.info(f"Successfully updated restaurant {user_id}")
+            
+            # Refresh and return the updated restaurant
+            db.refresh(rider)
+
+            # Return the updated rider directly (FastAPI handles serialization)
+            # If you need to set cookies, create a response manually
+            if new_access_token:
+                restaurant_dict ={
+                    "id": rider.id,
+                    "phone":rider.phone
+                    
+                }
+                response = JSONResponse(content=restaurant_dict)
+                response.set_cookie(
+                    key="access_token",
+                    value=new_access_token,
+                    httponly=True,
+                    secure=True,
+                    samesite="lax",
+                    max_age=settings.RESET_ACCESS_TOKEN_EXPIRE_MINS * 60
+                )
+                logger.info(f"Set new access token cookie for rider {user_id}")
+                return response
+            return rider
+        except Exception as e:
+            db.rollback()
+        logger.error(f"Error updating restaurant {user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update restaurant profile: {str(e)}"
+        )

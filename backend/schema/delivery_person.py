@@ -10,6 +10,10 @@ class DeliveryPersonCreate(BaseModel):
     password_hash: str
     vehicle_number: Optional[str] = None
     rc_number: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    account_holder_name: Optional[str] = None
+    bank_name: Optional[str] = None
     current_latitude: Optional[float] = None
     current_longitude: Optional[float] = None
    
@@ -64,6 +68,10 @@ class DeliveryPersonLoginShow(BaseModel):
     is_active: bool = True
     rating: Optional[float] = 0.0
     total_deliveries: Optional[int] = 0
+    bank_account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    account_holder_name: Optional[str] = None
+    bank_name: Optional[str] = None
     last_location_update: Optional[datetime] 
     class Config:
         orm_mode = True
@@ -72,3 +80,15 @@ class DeliveryPersonLoginShow(BaseModel):
 class RiderLocationUpdate(BaseModel):
     latitude: float
     longitude: float
+
+class RiderProfileUpdate(BaseModel):
+    address: Optional[str] = None
+    password: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    account_holder_name: Optional[str] = None
+    bank_name: Optional[str] = None
+    class Config:
+        orm_mode = True
+        from_attributes = True
+    

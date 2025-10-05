@@ -628,7 +628,7 @@ def sync_primary_location(
 
 
 @router.put("/auth/profile/restaurant", response_model=RestaurantRead)
-def update_restaurant_profile(
+async def update_restaurant_profile(
     update_data: RestaurantUpdate = Body(...),
     db: Session = Depends(get_db),
     request: Request = None
