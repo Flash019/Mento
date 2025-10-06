@@ -9,6 +9,7 @@ class OrderCreate(BaseModel):
     restaurant_id: str
     restaurant_location_id: Optional[str] = None
     order_code: str
+    category: Optional[str] = None
     status: Optional[OrderStatus] = OrderStatus.pending
     total_amount: float
     delivery_fee: Optional[float] = 0.0

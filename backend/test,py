@@ -24,7 +24,7 @@ menu_json = {
     "is_available": True
 }
 
-with open("backend\srij_pic.jpg", "rb") as img:
+with open("test_image.jpg", "rb") as img:
     resp = client.post(
         "/restaurant/menu/add",
         data={"menu": json.dumps(menu_json)},

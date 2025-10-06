@@ -1,4 +1,4 @@
-from sqlalchemy import Column, CHAR, DECIMAL, TIMESTAMP, Enum, ForeignKey, Text
+from sqlalchemy import Column, CHAR, DECIMAL, TIMESTAMP, Enum, ForeignKey, Text,String
 from sqlalchemy.orm import relationship
 from sql_db import Base
 from model.enums import OrderStatus
@@ -9,6 +9,7 @@ class Order(Base):
     id = Column(CHAR(36), primary_key=True)
     user_id = Column(CHAR(36), ForeignKey("users.id"))
     restaurant_id = Column(CHAR(36), ForeignKey("restaurants.id"))
+    category = Column(String(100), nullable=True)
     order_code = Column(Text, unique=True, nullable=False)
     status = Column(Enum(OrderStatus), default=OrderStatus.pending)
     total_amount = Column(DECIMAL(10, 2), nullable=False)

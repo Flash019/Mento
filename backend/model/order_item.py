@@ -8,6 +8,7 @@ class OrderItem(Base):
     __tablename__ = "order_items"
     id = Column(CHAR(36), primary_key=True)
     order_id = Column(CHAR(36), ForeignKey("orders.id"))
+    category = Column(String(100), nullable=True)
     menu_item_id = Column(CHAR(36), ForeignKey("menu_items.id"))
     quantity = Column(Integer, nullable=False)
     price = Column(DECIMAL(10,2), nullable=False)

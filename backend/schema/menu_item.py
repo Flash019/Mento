@@ -4,18 +4,20 @@ from datetime import datetime
 
 
 class MenuItemCreate(BaseModel):
-    restaurant_id: str
     name: str
+    category: Optional[str] = None
     description: Optional[str] = None
     price: float
     currency: Optional[str] = "INR"
     is_veg: Optional[bool] = False
     is_available: Optional[bool] = True
     stock: Optional[int] = None
-    photo_url: Optional[str] = None
+    
 
 class MenuItemRead(MenuItemCreate):
     id: str
+    code: str
+    photo_url: Optional[str] = None
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 

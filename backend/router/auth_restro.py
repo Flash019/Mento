@@ -215,7 +215,7 @@ async def restro_login(
     db.add(new_refresh)
     db.commit()
 
-    response = ORJSONResponse(content=user_info)
+    response = ORJSONResponse(content=user_info,status_code=201)
     response.set_cookie(
         key="access_token",
         value=access_token,

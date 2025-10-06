@@ -219,3 +219,29 @@ def get_current_rider(db: Session, phone: str, password: str):
     if not verify_password(password, user.password_hash):
         return None
     return user
+
+
+
+from fastapi import Header
+
+def get_current_restaurant1(
+    authorization: str = Header(...),  # expects 'Authorization' header
+    db: Session = Depends(get_db)
+) -> Restaurant:
+    """
+    Extract restaurant ID from JWT token and fetch restaurant.
+    """
+    try:
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Invalid token format")
+        token = authorization.split(" ")[1]
+        payload = verify_token(token)  # your JWT verification function
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID in token")
+        restaurant = db.query(Restaurant).filter(Restaurant.id == user_id).first()
+        if not restaurant:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+        return restaurant
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")

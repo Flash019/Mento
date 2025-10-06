@@ -12,7 +12,7 @@ from model.review import Review
 from model.delivery_person import DeliveryPerson
 
 # Import your routers
-from router import upload, auth_user,auth_restro,auth_delivery_person
+from router import upload, auth_user,auth_restro,auth_delivery_person,menu_add_restro
 
 # Create tables after all models are imported
 Base.metadata.create_all(bind=engine)
@@ -24,3 +24,4 @@ app.include_router(upload.router)
 app.include_router(auth_user.router)
 app.include_router(auth_restro.router)
 app.include_router(auth_delivery_person.router)
+app.include_router(menu_add_restro.router)
