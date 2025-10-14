@@ -16,4 +16,5 @@ googlemaps
 python-decouple
 argon2_cffi
 geopy
+python-geohash
 orjson

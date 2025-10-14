@@ -99,6 +99,7 @@ class RestaurantLoginRead(BaseModel):
     ifsc_code: Optional[str] = None
     account_holder_name: Optional[str] = None
     bank_name: Optional[str] = None
+    
     locations: List[RestaurantLocationRead] = []
 
     class Config:
@@ -152,3 +153,19 @@ class RestaurantUpdate(BaseModel):
     class Config:
         orm_mode = True  
         from_orm = True      
+
+
+class NearBy(BaseModel):
+    latitude: float
+    longitude : float
+    radius_km : float = 5.0 # default 5Km
+    geohash_precision : int = 6
+
+class NearByout(BaseModel):
+    id: str
+    restaurant_id :  str
+    name : str
+    address: str = None 
+    latitude : float
+    longitude: float 
+    distance_km: float     

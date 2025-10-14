@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, String, Boolean, Integer, DECIMAL, TIMESTAMP, Text, Enum, ForeignKey, JSON
+    Column, String, Boolean, Integer, DECIMAL, TIMESTAMP, Text, Enum, ForeignKey, JSON,Index
 )
 from sqlalchemy.dialects.mysql import CHAR
 from sqlalchemy.orm import relationship
@@ -69,8 +69,12 @@ class RestaurantLocation(Base):
     ifsc_code = Column(String, nullable=True)
     account_holder_name = Column(String, nullable=True)
     bank_name = Column(String, nullable=True)
+    geohash = Column(String(16),nullable=True, index=True)
     restaurant = relationship("Restaurant", back_populates="locations")
 
 
 
-    
+
+Index("idx_lat_lng",
+          RestaurantLocation.latitude,
+          RestaurantLocation.longitude)

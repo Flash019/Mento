@@ -1,3 +1,5 @@
-__pycache__
-/backend/.env
-../mento/
+__pycache__/
+*.pyc
+mento/
+.env
+.DS_Store

@@ -1,212 +1,113 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Nearby Restaurants - Food Delivery</title>
-  <!-- Your CSS remains unchanged — omitted here for brevity -->
-  <style>
-    /* [CSS styles are same as your original - not repeated here] */
-  </style>
+    <meta charset="UTF-8">
+    <title>Nearby Restaurants Checker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f7f7f7;
+        }
+        h1 {
+            color: #333;
+        }
+        input, button {
+            padding: 8px;
+            margin: 5px;
+            font-size: 16px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            text-align: left;
+        }
+        th {
+            background-color: #eee;
+        }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>🍽 Find Nearby Restaurants</h1>
-      <p>Discover delicious food near you</p>
-    </div>
+    <h1>Nearby Restaurants Checker</h1>
 
-    <div class="location-bar">
-      <div class="location-info">
-        <div class="current-location" id="currentLocation">
-          <svg class="location-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-          </svg>
-          <span>Getting your location...</span>
-        </div>
-        
-        <div class="search-controls">
-          <input type="text" id="searchQuery" placeholder="Search restaurants or dishes..."/>
-          <select id="radiusSelect">
-            <option value="2">2 km</option>
-            <option value="5" selected>5 km</option>
-            <option value="10">10 km</option>
-            <option value="15">15 km</option>
-          </select>
-          <button onclick="searchRestaurants()">Search</button>
-          <button onclick="getCurrentLocation()">📍 Refresh Location</button>
-        </div>
-      </div>
-    </div>
+    <label>Latitude: </label>
+    <input type="number" step="0.000001" id="latitude" value="22.7363">
+    <label>Longitude: </label>
+    <input type="number" step="0.000001" id="longitude" value="88.4940">
+    <label>Radius (km): </label>
+    <input type="number" step="0.1" id="radius" value="5">
+    <button onclick="checkNearby()">Check Nearby</button>
 
-    <div id="errorMessage"></div>
-    <div id="loading" class="loading" style="display: none;">Loading restaurants...</div>
-    <div id="restaurants" class="restaurants-grid"></div>
-    <div id="noResults" class="no-results" style="display: none;">No restaurants found in your area 😕</div>
-  </div>
+    <table id="resultsTable" style="display:none">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Address</th>
+                <th>Latitude</th>
+                <th>Longitude</th>
+                <th>Distance (km)</th>
+            </tr>
+        </thead>
+        <tbody id="resultsBody">
+        </tbody>
+    </table>
 
-  <script>
-    const API_BASE_URL = 'http://localhost:8000';
-    let userLocation = null;
+    <script>
+        async function checkNearby() {
+            const lat = parseFloat(document.getElementById('latitude').value);
+            const lon = parseFloat(document.getElementById('longitude').value);
+            const radius = parseFloat(document.getElementById('radius').value);
 
-    window.addEventListener('load', () => {
-      getCurrentLocation();
-    });
+            const payload = {
+                latitude: lat,
+                longitude: lon,
+                radius_km: radius,
+                geohash_precision: 6
+            };
 
-    function getCurrentLocation() {
-      if (!navigator.geolocation) {
-        showError('Geolocation is not supported by your browser');
-        return;
-      }
+            try {
+                const res = await fetch('http://127.0.0.1:8000/nearby/restaurant', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
 
-      document.getElementById('currentLocation').innerHTML = `
-        <svg class="location-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-        </svg>
-        <span>Getting your location...</span>
-      `;
+                const data = await res.json();
 
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          userLocation = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude
-          };
+                const tbody = document.getElementById('resultsBody');
+                tbody.innerHTML = '';
 
-          document.getElementById('currentLocation').innerHTML = `
-            <svg class="location-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
-            <span>📍 Current Location: ${userLocation.latitude.toFixed(4)}, ${userLocation.longitude.toFixed(4)}</span>
-          `;
+                if (data.length === 0) {
+                    alert('No nearby restaurants found!');
+                    document.getElementById('resultsTable').style.display = 'none';
+                    return;
+                }
 
-          fetchNearbyRestaurants();
-        },
-        (error) => {
-          let errorMessage = 'Unable to get your location. ';
-          switch(error.code) {
-            case error.PERMISSION_DENIED:
-              errorMessage += 'Please allow location access.';
-              break;
-            case error.POSITION_UNAVAILABLE:
-              errorMessage += 'Location information unavailable.';
-              break;
-            case error.TIMEOUT:
-              errorMessage += 'Location request timed out.';
-              break;
-          }
+                data.forEach(r => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${r.name}</td>
+                        <td>${r.address || ''}</td>
+                        <td>${r.latitude}</td>
+                        <td>${r.longitude}</td>
+                        <td>${r.distance_km}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
 
-          showError(errorMessage);
-
-          // Default to Delhi
-          userLocation = { latitude: 28.6139, longitude: 77.2090 };
-          document.getElementById('currentLocation').innerHTML = `
-            <svg class="location-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
-            <span>Using default location (Delhi)</span>
-          `;
-          fetchNearbyRestaurants();
+                document.getElementById('resultsTable').style.display = 'table';
+            } catch (err) {
+                console.error(err);
+                alert('Error fetching nearby restaurants. Check console.');
+            }
         }
-      );
-    }
-
-    async function fetchNearbyRestaurants() {
-      if (!userLocation) {
-        showError('Location not available');
-        return;
-      }
-
-      const radius = document.getElementById('radiusSelect').value;
-
-      document.getElementById('loading').style.display = 'block';
-      document.getElementById('restaurants').innerHTML = '';
-      document.getElementById('noResults').style.display = 'none';
-      document.getElementById('errorMessage').innerHTML = '';
-
-      try {
-        const response = await fetch(
-          `${API_BASE_URL}/restaurants/nearby?latitude=${userLocation.latitude}&longitude=${userLocation.longitude}&radius_km=${radius}&limit=20`
-        );
-
-        if (!response.ok) throw new Error('Failed to fetch restaurants');
-
-        const data = await response.json();
-        displayRestaurants(data.restaurants);
-
-      } catch (error) {
-        showError('Failed to load restaurants: ' + error.message);
-      } finally {
-        document.getElementById('loading').style.display = 'none';
-      }
-    }
-
-    async function searchRestaurants() {
-      if (!userLocation) {
-        showError('Location not available');
-        return;
-      }
-
-      const query = document.getElementById('searchQuery').value.trim();
-      const radius = document.getElementById('radiusSelect').value;
-
-      if (!query) {
-        fetchNearbyRestaurants();
-        return;
-      }
-
-      document.getElementById('loading').style.display = 'block';
-      document.getElementById('restaurants').innerHTML = '';
-      document.getElementById('noResults').style.display = 'none';
-      document.getElementById('errorMessage').innerHTML = '';
-
-      try {
-        const response = await fetch(
-          `${API_BASE_URL}/restaurants/search?latitude=${userLocation.latitude}&longitude=${userLocation.longitude}&query=${encodeURIComponent(query)}&radius_km=${radius}`
-        );
-
-        if (!response.ok) throw new Error('Search failed');
-
-        const data = await response.json();
-        displayRestaurants(data.results);
-
-      } catch (error) {
-        showError('Search failed: ' + error.message);
-      } finally {
-        document.getElementById('loading').style.display = 'none';
-      }
-    }
-
-    function displayRestaurants(restaurants) {
-      const container = document.getElementById('restaurants');
-      container.innerHTML = '';
-
-      if (!restaurants || restaurants.length === 0) {
-        document.getElementById('noResults').style.display = 'block';
-        return;
-      }
-
-      restaurants.forEach((r) => {
-        const div = document.createElement('div');
-        div.className = 'restaurant-card';
-
-        div.innerHTML = `
-          <h3>${r.name}</h3>
-          <p>${r.cuisine || 'Various cuisines'}</p>
-          <p>Distance: ${r.distance_km ? r.distance_km.toFixed(2) : '?'} km</p>
-        `;
-
-        container.appendChild(div);
-      });
-    }
-
-    function showError(message) {
-      document.getElementById('errorMessage').innerHTML = message;
-    }
-  </script>
+    </script>
 </body>
 </html>
