@@ -20,8 +20,8 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 # Include routers
-app.include_router(upload.router)
-app.include_router(auth_user.router)
-app.include_router(auth_restro.router)
-app.include_router(auth_delivery_person.router)
-app.include_router(menu_add_restro.router)
+app.include_router(upload.router, tags = ['Upload Image'])
+app.include_router(auth_user.router, tags=['User'])
+app.include_router(auth_restro.router,tags=["Restaurant"])
+app.include_router(auth_delivery_person.router, tags=['Rider'])
+app.include_router(menu_add_restro.router,tags=['Menu Create'])
