@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Nearby Restaurants Map</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+    <style>
+        #map { height: 100vh; width: 100%; }
+        .marker-label {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <script>
+        // Initialize the map with a temporary view
+        const map = L.map('map').setView([0, 0], 2);
+
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Function to fetch nearby restaurants from your FastAPI backend
+        async function fetchNearbyRestaurants(lat, lon) {
+            try {
+                const response = await fetch("http://localhost:8000/nearby/restaurant", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        latitude: lat,
+                        longitude: lon,
+                        radius_km: 5  // Example radius in km
+                    })
+                });
+
+                const restaurants = await response.json();
+
+                // Add restaurant markers
+                restaurants.forEach(r => {
+                    const marker = L.marker([r.latitude, r.longitude]).addTo(map);
+                    marker.bindPopup(`
+                        <b>Restaurant ID:</b> ${r.restaurnt_id}<br>
+                        <b>Distance:</b> ${r.distance_km} km<br>
+                        <b>ETA:</b> ${r.ETA_IN_MIN} min
+                    `);
+                });
+
+            } catch (error) {
+                console.error("Error fetching restaurants:", error);
+                alert("Failed to fetch nearby restaurants. Check backend.");
+            }
+        }
+
+        // Get user's real location
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                position => {
+                    const userLat = position.coords.latitude;
+                    const userLon = position.coords.longitude;
+
+                    // Center map on user's location
+                    map.setView([userLat, userLon], 13);
+
+                    // Add marker for user
+                    const userMarker = L.marker([userLat, userLon]).addTo(map);
+                    userMarker.bindPopup("<b>You are here</b>").openPopup();
+
+                    // Fetch and show nearby restaurants
+                    fetchNearbyRestaurants(userLat, userLon);
+                },
+                error => {
+                    console.error("Geolocation error:", error);
+                    alert("Could not get your location. Please allow location access in the browser.");
+                }
+            );
+        } else {
+            alert("Geolocation is not supported by this browser.");
+        }
+    </script>
+</body>
+</html>

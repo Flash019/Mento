@@ -23,8 +23,9 @@ class RestaurantLocationRead(BaseModel):
     bank_name: Optional[str] = None
     created_at: Optional[datetime]
 
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 class RestaurantCreate(BaseModel):
     name: str
@@ -71,8 +72,7 @@ class RestaurantRead(BaseModel):
     locations: List[RestaurantLocationRead] = []
 
     class Config:
-        orm_mode = True
-        from_orm = True
+        from_attributes = True
 
 class RestaurantLogin(BaseModel):
     phone: str
@@ -151,21 +151,21 @@ class RestaurantUpdate(BaseModel):
     updated_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True  
-        from_orm = True      
+        from_attributes = True    
 
 
 class NearBy(BaseModel):
     latitude: float
     longitude : float
-    radius_km : float = 5.0 # default 5Km
+    radius_km : float = 30.0 # default 30Km
     geohash_precision : int = 6
 
 class NearByout(BaseModel):
     id: str
-    restaurant_id :  str
-    name : str
-    address: str = None 
-    latitude : float
-    longitude: float 
-    distance_km: float     
+    restaurant_id: str
+    name: str
+    latitude: float
+    longitude: float
+    distance_km: float
+    ETA_IN_MIN: float
+    tsp_order: Optional[int]

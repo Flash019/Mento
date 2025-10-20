@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Nearby Restaurants</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    #map { height: 100vh; width: 100%; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // Initialize map
+    const map = L.map('map').setView([20, 78], 5); // initial India view
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    // Ask user location
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        const userLat = position.coords.latitude;
+        const userLon = position.coords.longitude;
+
+        // Center map to user
+        map.setView([userLat, userLon], 13);
+
+        // Add user marker
+        L.marker([userLat, userLon]).addTo(map)
+          .bindPopup("You are here").openPopup();
+
+        // Fetch nearby restaurants
+        const response = await fetch("http://127.0.0.1:8000/nearby/restaurant?limit=20&offset=0", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            latitude: userLat,
+            longitude: userLon,
+            radius_km: 5
+          })
+        });
+
+        const restaurants = await response.json();
+
+        // Plot restaurant markers
+        restaurants.forEach(r => {
+          L.marker([r.latitude, r.longitude]).addTo(map)
+            .bindPopup(`
+              <b>${r.name}</b><br>
+              Distance: ${r.distance_km} km<br>
+              ETA: ${r.ETA_IN_MIN} min
+            `);
+        });
+
+      }, () => {
+        alert("Unable to get your location");
+      });
+    } else {
+      alert("Geolocation is not supported by your browser");
+    }
+  </script>
+</body>
+</html>

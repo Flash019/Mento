@@ -18,3 +18,6 @@ argon2_cffi
 geopy
 python-geohash
 orjson
+aioredis
+redis
+geohash2
